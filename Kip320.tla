@@ -84,16 +84,6 @@ FencedLeaderShrinkIsr == \E leader \in Replicas :
            /\ QuorumUpdateLeaderAndIsr(leader, isr \ {follower})
     /\ UNCHANGED <<nextRecordId, replicaLog, nextLeaderEpoch, leaderAndIsrRequests>>
 
-(**
- * This is a bug that was found while checking this model. When a follower becomes leader, 
- * its high watermark is typically behind the leader. Since it does not know what the true
- * high watermark was at the time the leader failed (or shutdown), it must be conservative 
- * when adding new members to the ISR. We can be assured that all members of the current 
- * ISR have replicated up to whatever the leader's high watermark was, but it is not safe 
- * to assume the same for new replicas until they have replicated ALL of the messages from 
- * the previous leader. In other words, we need to wait until it has at least replicated up
- * to the start of the its own leader epoch.
- *)
 LOCAL HasHighWatermarkReachedCurrentEpoch(leader) ==
     LET hw == replicaState[leader].hw
     IN  \/ hw = ReplicaLog!GetEndOffset(leader)
@@ -175,9 +165,10 @@ Spec == Init /\ [][Next]_vars
              /\ WF_vars(FencedBecomeFollowerAndTruncate)
              /\ WF_vars(BecomeLeader)
 
-THEOREM Spec => WeakIsr
-THEOREM Spec => StrongIsr
+THEOREM Spec => []TypeOk
+THEOREM Spec => []WeakIsr
+THEOREM Spec => []StrongIsr
 =============================================================================
 \* Modification History
-\* Last modified Mon Jul 09 14:21:56 PDT 2018 by jason
+\* Last modified Tue Jul 10 08:05:35 PDT 2018 by jason
 \* Created Thu Jul 05 23:45:04 PDT 2018 by jason

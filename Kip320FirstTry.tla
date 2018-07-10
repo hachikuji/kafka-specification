@@ -17,6 +17,28 @@
 
 --------------------------- MODULE Kip320FirstTry ---------------------------
 
+(**
+ * This was a first attempt at the improved fencing logic in KIP-320. The basic
+ * idea was to have the followers send an expected epoch in the fetch request and
+ * do the truncation upon receiving a LOG_TRUNCATION error. Rather than only doing
+ * the truncation upon becoming a follower, we would simply begin fetching and only 
+ * truncate when needed.
+ *  
+ * However, this model fails to guarantee the StrongIsr property because the leader
+ * cannot guarantee that followers are on the same epoch when bumping the high watermark 
+ * or expanding the ISR. You can run the model to find an example of this, but 
+ * one case involves several fast leader elections and  a leader bumping the high 
+ * watermark due to a follower on an older epoch. As the follower catches up to the 
+ * current epoch, it may truncate the committed data, which results in a window during 
+ * which it could be elected as leader and cause data loss.
+ * 
+ * Fixing the problem seems to be a simple matter of adding the current epoch to
+ * the Fetch request, but then the existing logic of truncating only on leader epoch
+ * changes makes more sense. For a given epoch, the follower only needs to truncate
+ * once upon observing the new epoch and it should not need truncation again until
+ * the next leader change.
+ *)
+
 EXTENDS Kip279
 
 (**
@@ -88,22 +110,6 @@ FollowerFetch == \E follower, leader \in Replicas :
            IN   replicaState' = [replicaState EXCEPT ![follower].hw = followerHw]
     /\ UNCHANGED <<nextRecordId, quorumState, nextLeaderEpoch, leaderAndIsrRequests>>
 
-(**
- * This is a bug that was found while checking this model. When a follower
- * becomes leader, its high watermark is typically behind the leader. Since 
- * it does not know what the true high watermark was at the time the leader
- * failed (or shutdown), it must be conservative when adding new members to
- * the ISR. We can be assured that all members of the current ISR have 
- * replicated up to whatever the leader's high watermark was, but it is not 
- * safe to assume the same for new replicas until they have replicated ALL
- * of the messages from the previous leader. In other words, we need to wait
- * until it has at least replicated up to the start of the its own leader epoch.
- *)
-HasFollowerReachedLeaderEpoch(leader, follower, followerEndOffset) ==
-    \/ followerEndOffset = ReplicaLog!GetEndOffset(leader)
-    \/ \E endRecord \in LogRecords :
-        /\ ReplicaLog!HasEntry(leader, endRecord, followerEndOffset)
-        /\ ReplicaLog!GetRecordAtOffset(leader, followerEndOffset).epoch = replicaState[leader].leaderEpoch
 
 LeaderShrinkIsrBetterFencing == \E leader \in Replicas :
     /\ LET isr == replicaState[leader].isr
@@ -112,16 +118,33 @@ LeaderShrinkIsrBetterFencing == \E leader \in Replicas :
            /\ ~ IsFollowerCaughtUpToLeaderEpoch(leader, replica, endOffset) 
            /\ QuorumUpdateLeaderAndIsr(leader, isr \ {replica})
     /\ UNCHANGED <<nextRecordId, replicaLog, nextLeaderEpoch, leaderAndIsrRequests>>
-    
+
+LOCAL HasHighWatermarkReachedCurrentEpoch(leader) ==
+    LET hw == replicaState[leader].hw
+    IN  \/ hw = ReplicaLog!GetEndOffset(leader)
+        \/ \E record \in LogRecords :
+            /\ ReplicaLog!HasEntry(leader, record, hw)
+            /\ record.epoch = replicaState[leader].leaderEpoch
+
+(**
+ * Note this version includes a bug fix in the ISR expansion logic following a leader election.
+ * Basically the leader should not admit any new replicas into the ISR until they have at least
+ * caught up to the start of the current epoch. 
+ *)   
 LeaderExpandIsrBetterFencing == \E leader \in Replicas :
     /\ LET isr == replicaState[leader].isr
            leaderHw == replicaState[leader].hw
        IN  \E replica \in Replicas \ isr :
            /\ IsFollowerCaughtUpToLeaderEpoch(leader, replica, leaderHw)
-           /\ HasFollowerReachedLeaderEpoch(leader, replica, leaderHw)
+           /\ HasHighWatermarkReachedCurrentEpoch(leader)
            /\ QuorumUpdateLeaderAndIsr(leader, isr \union {replica})
     /\ UNCHANGED <<nextRecordId, replicaLog, nextLeaderEpoch, leaderAndIsrRequests>>
 
+(**
+ * In this model, the replica does not truncate upon becoming follower. It simply begins
+ * fetching and relies on receiving a truncation error in order to indicate when truncation 
+ * is necessary.
+ *)
 BecomeFollower == \E leader, replica \in Replicas, leaderAndIsrRequest \in leaderAndIsrRequests :
     /\ leader # replica
     /\ leaderAndIsrRequest.leader = leader
@@ -152,8 +175,7 @@ Spec == Init /\ [][Next]_vars
              /\ WF_vars(BecomeFollower)
              /\ WF_vars(BecomeLeader)
 
-
 =============================================================================
 \* Modification History
-\* Last modified Sun Jul 08 00:48:20 PDT 2018 by jason
+\* Last modified Tue Jul 10 08:09:55 PDT 2018 by jason
 \* Created Sun Jul 08 00:45:59 PDT 2018 by jason
