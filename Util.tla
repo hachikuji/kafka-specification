@@ -21,6 +21,7 @@ EXTENDS Integers
 
 Max(set) == CHOOSE max \in set : \A val \in set : max \geq val
 Min(set) == CHOOSE min \in set : \A val \in set : min \leq val
+Range(fn) == {fn[x]: x \in DOMAIN fn}
 
 =============================================================================
 \* Modification History
