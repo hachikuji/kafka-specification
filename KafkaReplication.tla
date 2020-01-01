@@ -164,7 +164,6 @@ ControllerShrinkIsr == \E replica \in Replicas :
             /\ ControllerUpdateIsr(None, quorumState.isr \ {replica})
         \/  /\ quorumState.leader # replica
             /\ replica \in quorumState.isr
-            /\ quorumState.isr # {replica}
             /\ ControllerUpdateIsr(quorumState.leader, quorumState.isr \ {replica})
     /\ UNCHANGED <<nextRecordId, replicaLog, replicaState>>
 
@@ -342,5 +341,6 @@ StrongIsr == \A r1 \in Replicas :
 
 =============================================================================
 \* Modification History
+\* Last modified Tue Dec 31 22:30:08 PST 2019 by guozhang
 \* Last modified Mon Jul 09 14:24:02 PDT 2018 by jason
 \* Created Sun Jun 10 16:16:51 PDT 2018 by jason
