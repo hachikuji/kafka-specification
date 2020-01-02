@@ -164,7 +164,6 @@ ControllerShrinkIsr == \E replica \in Replicas :
             /\ ControllerUpdateIsr(None, quorumState.isr \ {replica})
         \/  /\ quorumState.leader # replica
             /\ replica \in quorumState.isr
-            /\ quorumState.isr # {replica}
             /\ ControllerUpdateIsr(quorumState.leader, quorumState.isr \ {replica})
     /\ UNCHANGED <<nextRecordId, replicaLog, replicaState>>
 
@@ -340,7 +339,13 @@ StrongIsr == \A r1 \in Replicas :
                 /\ ReplicaLog!HasEntry(r1, record, offset)        
                 /\ ReplicaLog!HasEntry(r2, record, offset) 
 
+(**
+ * The leader should always in the ISR, because even if all brokers failed, we still keep the leader in ISR
+ *)
+LeaderInIsr == quorumState.leader \in quorumState.isr
+
 =============================================================================
 \* Modification History
+\* Last modified Thu Jan 02 14:37:55 PST 2020 by guozhang
 \* Last modified Mon Jul 09 14:24:02 PDT 2018 by jason
 \* Created Sun Jun 10 16:16:51 PDT 2018 by jason
