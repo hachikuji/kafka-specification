@@ -166,9 +166,11 @@ Spec == Init /\ [][Next]_vars
              /\ WF_vars(BecomeLeader)
 
 THEOREM Spec => []TypeOk
+THEOREM Spec => []LeaderInIsr
 THEOREM Spec => []WeakIsr
 THEOREM Spec => []StrongIsr
 =============================================================================
 \* Modification History
+\* Last modified Thu Jan 02 14:37:06 PST 2020 by guozhang
 \* Last modified Tue Jul 10 08:05:35 PDT 2018 by jason
 \* Created Thu Jul 05 23:45:04 PDT 2018 by jason
